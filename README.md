@@ -6,8 +6,8 @@
 ### Usage
 ```=shell
 
-make
-./myscanner input/print.c 
+$ make
+$ ./myscanner input/print.c 
 print 	 PRINT
 ( 	 LB
 " 	 QUOTA
