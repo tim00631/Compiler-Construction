@@ -43,8 +43,7 @@ WhiteSpace [ \t]+
 "\""        { BEGIN(STR);
                 printf("%s \t QUOTA \n", yytext);
             }
-<STR>"\\\"" { printf("%s \t STR_CONST \n", yytext); }
-<STR>[^\"]* { printf("%s \t STR_CONST \n", yytext); }
+<STR>([^\\\"]|\\.)*  { printf("%s \t STR_CONST \n", yytext); }
 <STR>"\""   { BEGIN(INITIAL);
                 printf("%s \t QUOTA \n", yytext);
             }
