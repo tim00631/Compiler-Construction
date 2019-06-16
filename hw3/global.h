@@ -2,9 +2,10 @@
 #define GLOBAL_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-typedef enum { VOID_T, INT_T, FLOAT_T, STRING_T, BOOL_T, ID_T} Type;
+typedef enum { VOID_T, INT_T, FLOAT_T, STRING_T, BOOL_T, ID_T, NAT} Type;
 typedef enum {
     ADD_OP, SUB_OP, MUL_OP, DIV_OP, MOD_OP, INC_OP, DEC_OP,
     MT_OP, LT_OP, MTE_OP, LTE_OP, EQ_OP, NE_OP,
