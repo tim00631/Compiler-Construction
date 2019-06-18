@@ -58,13 +58,14 @@ void debug(char* s);
 void gencode(char * s);
 void do_declaration_stat(int index, Value type, Value id, Value R_val);
 void do_function_definition(Entry *temp);
-void do_function_call(Value id);
 void do_assign_expr(Value term1, Operator op, Value term2);
 void do_return_stat(Value term1);
 void do_print(Value term1);
+void do_load_attribute(Value term1);
 void find_return_type(Value term);
 Value find_assign_type(Value term, Value term2);                
 Value do_postfix_expr(Value term1, Operator op);
+Value do_function_call(Value id);
 Value do_multiplication_expr(Value term1, Operator op, Value term2);
 Value do_addition_expr(Value term1, Operator op, Value term2);
 Value do_comparison_expr(Value term1, Operator op, Value term2);
@@ -92,9 +93,8 @@ char* str_replace(char* string, const char* substr, const char* replacement);
 %type <val> expression expression_stat
 %type <val> postfix_expr multiplication_expr addition_expr comparison_expr
 %type <val> parenthesis_clause
-%type <val> constant function_call
+%type <val> constant function_call func
 %type <val> type
-%type <val> parameter parameter_list
 
 /* Yacc will start at this nonterminal */
 %start program
@@ -104,17 +104,24 @@ char* str_replace(char* string, const char* substr, const char* replacement);
 
 program
     : program stat 
-    |
+    | 
     ;
 stat
     : declaration
     | func_declaration
-    | function_call
-    | compound_stat 
+    | assign_stat
+    | if_stat 
+    | while_stat 
     | expression_stat 
     | return_stat 
     | print_func
-    | SEMICOLON
+    ;
+expression_stat
+    : postfix_expr SEMICOLON
+    | function_call SEMICOLON
+    ;
+expression
+    : comparison_expr {$$ = $1;}
     ;
 declaration
     : type ID '=' expression SEMICOLON { insert_symbol(cur_header, $2, "variable", $1, $4); }
@@ -131,28 +138,25 @@ func_declaration
     : type ID '(' { create_symbol_table(); } parameter_list ')' {insert_symbol(cur_header->pre, $2, "function", $1, NaV); } block { dump_flag = 1; } 
     ;
 parameter_list
-	: parameter { $$ = $1; }
+	: parameter 
 	| parameter_list ',' parameter 
-    | {$$ = NaV;}
+    | 
 	;
 parameter
-    : type ID { $$ = $1; insert_symbol(cur_header, $2, "parameter", $1, NaV); }
+    : type ID { insert_symbol(cur_header, $2, "parameter", $1, NaV); }
     ; 
 function_call
-    : ID { undeclared_check($1.string, "function"); } '(' argument_list ')' SEMICOLON {do_function_call($1);}
+    :   ID { debug("functioncall!!!!!!");undeclared_check($1.string, "function"); } 
+        '(' argument_list ')' 
+         { debug("lol"); $$ = do_function_call($1);}
     ;
 argument_list
-    : ID { undeclared_check($1.string, "variable"); }
-    | argument_list ',' ID { undeclared_check($3.string, "variable"); }
-    | { }
-    ;
-compound_stat
-    : assign_stat
-    | if_stat
-    | while_stat
+    : argument_list ',' expression { do_load_attribute($3); }
+    | expression { printf("argument~~~%s\n",$1.string);do_load_attribute($1); }
+    |
     ;
 assign_stat
-    : ID { undeclared_check($1.string, "variable"); } assign_op expression SEMICOLON { do_assign_expr($1, $3, $4);}
+    : ID { debug("assign_id"); undeclared_check($1.string, "variable"); } assign_op {debug("equalaa");} expression SEMICOLON { debug("assign'SEMICOLON!");do_assign_expr($1, $3, $5);}
     ;
 assign_op
     : '=' {$$ = ASGN_OP;}
@@ -179,16 +183,12 @@ lb
 rb
     : '}'
     ;
-expression_stat
-    : expression {$$ = $1;}
-    ;
-expression
-    : comparison_expr {$$ = $1;}
-    ;
 constant
     : I_CONST {$$ = $1;}
     | F_CONST {$$ = $1;}
     | '"' STR_CONST '"' { $$ = $2; }
+    | TRUE { $$ = $1; }
+    | FALSE { $$ = $1;  }
     ;
 post_op
     : INC { $$ = INC_OP; }
@@ -213,10 +213,8 @@ cmp_op
     ;
 parenthesis_clause
     : constant { $$ = $1; }
-    | ID { undeclared_check($1.string, "variable"); $$ = $1;}
+    | ID { debug("IDIDIDIDIDIDIID"); undeclared_check($1.string, "variable"); $$ = $1;}
     | '(' expression ')' { $$ = $2; }
-    | TRUE { $$ = $1; }
-    | FALSE { $$ = $1;  }
     | function_call { $$ = $1; }
     ;
 postfix_expr
@@ -236,7 +234,7 @@ comparison_expr
     | comparison_expr cmp_op addition_expr { $$ = do_comparison_expr($1, $2, $3); }
     ;
 return_stat
-    : RETURN SEMICOLON { debug("void return"); do_return_stat(NaV); }
+    : RETURN SEMICOLON { do_return_stat(NaV); }
 	| RETURN expression SEMICOLON{ do_return_stat($2); }
 	;
 print_func
@@ -270,15 +268,6 @@ int main(int argc, char** argv)
     return 0;
 }
 
-// void yyerror(char *s)
-// {
-//     printf("\n|-----------------------------------------------|\n");
-//     printf("| Error found in line %d: %s\n", yylineno, buf);
-//     printf("| %s", s);
-//     printf("\n| Unmatched token: %s", yytext);
-//     printf("\n|-----------------------------------------------|\n");
-//     exit(-1);
-// }
 void yyerror(char *s)
 {
     if(!strcmp(s,"syntax error")){
@@ -316,12 +305,12 @@ void create_symbol_table() {
     ptr->table_root->next = NULL;
     ptr->table_tail = ptr->table_root;
     if(cur_header == NULL) header_root = ptr;
-    printf("create a table: %d\n", ptr->depth);
+    //printf("create a table: %d\n", ptr->depth);
     ptr->pre = cur_header;
     cur_header = ptr;
 }
 void insert_symbol(Header *header, Value id, char* kind, Value type, Value R_val){
-    printf("insert_symbol %s\n",id.string);
+    //printf("insert_symbol %s\n",id.string);
     if(header == NULL){
         debug("fuck");
         header = header_root;
@@ -1416,13 +1405,20 @@ void find_return_type(Value term){
         }
         debug("not found ID_T original type");
 }
-void do_function_call(Value id){
+void do_load_attribute(Value term1){
+    printf("%d,%s\n",term1.type,term1.string);
+    debug("do_load_attribute");
+    find_original_type(term1,0);
+}
+
+
+Value do_function_call(Value id){
     Entry *cur = header_root->table_root->next;
     char* name = malloc(50);
     char* type = malloc(50);
     char* argument = malloc(50);
     while(cur != NULL){
-        if(!strcmp(cur->kind,"function")){
+        if(!strcmp(cur->name,id.string)){
             strcpy(name,cur->name);
             strcpy(type,cur->type);
             strcpy(argument,cur->attribute);
@@ -1440,7 +1436,7 @@ void do_function_call(Value id){
     type = str_replace(type,"bool", "Z");
     type = str_replace(type,"void", "V");
     type = str_replace(type,"string","Ljava/lang/String;");
-    sprintf(code_buf,"invokestatic compiler_hw3/%s(%s)%s",name,argument,type);
+    sprintf(code_buf,"\tinvokestatic compiler_hw3/%s(%s)%s\n",name,argument,type);
     gencode(code_buf);
-
+    return id;
 }
