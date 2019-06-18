@@ -1,10 +1,8 @@
-int a = 6;
-int b;
-void main() {
-    int d;
-    d = a + 6;
-    print(d);
-
-    return;
+int foo(int a,int b) {
+    return a;
 }
 
+void main() {
+    int c;
+    return;
+}

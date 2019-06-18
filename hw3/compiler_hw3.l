@@ -138,7 +138,7 @@ id			{letter}+({letter}|{digit})*
 {float}	    { 
                 CONCAT;
                 yylval.val.type = FLOAT_T;
-                yylval.val.f_val = atoi(yytext);
+                yylval.val.f_val = atof(yytext);
                 return F_CONST;
             }
 
