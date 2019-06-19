@@ -1097,101 +1097,135 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
 }
 
 Value do_comparison_expr(Value term1, Operator op, Value term2){
-//     debug("do compare");
-//     Value result;
-//     result.type = BOOL_T;
-//     Type t;
-//     int L_int;
-//     float L_float;
-//     int R_int;
-//     float R_float;
+    debug("do_comparison");
+    Value result;
+    int cast = 0;
+    if(!strcmp(term1.string,"calculated")){
+        debug("calculated, don't need to load Lvalue.");
+        if(term1.type == FLOAT_T){
+            cast = 1;
+        }
+    }
+    else{
+        switch (term1.type){
+            case ID_T:
+                term1 = find_original_type(term1,0);
+                break;
+            case INT_T:
+                sprintf(code_buf,"\tldc %d\n",term1.i_val);
+                gencode(code_buf);
+                break;
+            case FLOAT_T:
+                sprintf(code_buf,"\tldc %f\n",term1.f_val);
+                gencode(code_buf);
+                cast = 1;
+                break;
+            default:
+                debug("error type of addition");
+                break;
+        }
+    }
+    switch (term2.type){
+        case ID_T:
+            term2 = find_original_type(term2, cast);
+            break;
+        case INT_T:
+            if(!strcmp(term2.string,"calculated")){
+                debug("calculated, don't need to reload Rvalue.");
+                if(!strcmp(term1.string,"calculated")){
+                    if(term1.type == FLOAT_T){
+                        gencode("\ti2f\n");
+                    }   
+                    else{
+                        debug("both are calculated.");
+                    }  
+                }
+                else{
+                    if(term1.type == FLOAT_T){
+                        gencode("\tswap\n");
+                        gencode("\ti2f\n");
+                    }
+                }              
+            }
+            else{
+                sprintf(code_buf,"\tldc %d\n",term2.i_val);
+                gencode(code_buf);
+                if(term1.type == FLOAT_T){
+                    sprintf(code_buf,"\ti2f\n");
+                    gencode(code_buf);
+                }
+            }
+            break;
+        case FLOAT_T:
+            if(!strcmp(term2.string,"calculated")){
+                if(!strcmp(term1.string,"calculated")){
+                    if(term1.type == INT_T){
+                        gencode("\tswap\n");
+                        gencode("\ti2f\n");
+                        gencode("\tswap\n");
+                    }
+                    else{
+                        // no need to swap
+                    }
+                }
+                else{
+                    if(term1.type == INT){
+                        gencode("i2f");
+                        gencode("\tswap\n");
+                    }
+                    else{
+                        gencode("\tswap\n");
+                    }
+                }
+            }
+            else{
+                if(term1.type == INT_T){
+                    gencode("\ti2f\n");
+                }
+                else{
 
-//     if(term1.type == ID_T){
-//         term1 = find_original_type(term1);
-//     }
-//     if(term2.type == ID_T){
-//         term2 = find_original_type(term2);
-//     }
+                }
+                sprintf(code_buf,"\tldc %f\n",term2.f_val);
+                gencode(code_buf);
+            }
+            break;
+        default:
+            debug("error type of addition");
+            break;
+    }
+    printf("term1:%d term2:%d \n",term1.type,term2.type);
+    if(term1.type == FLOAT_T || term2.type == FLOAT_T){
+        result.type = FLOAT_T;
+    }
+    else {
+        result.type = INT_T;
+    }
+    printf("result type: %d\n",result.type);
+    switch (op){
+        case EQ_OP:
+            gencode("ifeq");
+            break;
+        case NE_OP:
+            gencode("ifne");
+            break;
+        case LT_OP:
+            gencode("iflt");
+            break;
+        case LTE_OP:
+            gencode("ifle");
+            break;
+        case MT_OP:
+            gencode("ifgt");
+            break;
+        case MTE_OP:
+            gencode("ifge");
+            break;
+        default:
+            debug("NOT A CMP_OP!!!");
+            break;
+    }
 
-//     if(term1.type == INT_T){
-//         if(term2.type == INT_T){
-//             L_int = term1.i_val;
-//             R_int = term2.i_val;
-//             t = INT_T;
-//         }
-//         else{
-//             L_float = (float)term2.i_val;
-//             R_float = term2.f_val;
-//             t = FLOAT_T;
-//         }
-//     }
-//     else if(term1.type == FLOAT_T){
-//         if(term2.type == INT_T){
-//             L_float = term1.f_val;
-//             R_float = (float)term2.i_val;
-//             t = FLOAT_T;
-//         }
-//         else{
-//             L_float = term1.f_val;
-//             R_float = term2.f_val;
-//             t = FLOAT_T;
-//         }
-//     }
-//     switch (op){
-//         case EQ_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int == R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float == R_float);
-//             }
-//             break;
-//         case NE_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int != R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float != R_float);
-//             }
-//             break;
-//         case LT_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int < R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float < R_float);
-//             }
-//             break;
-//         case LTE_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int <= R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float <= R_float);
-//             }
-//             break;
-//         case MT_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int > R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float > R_float);
-//             }
-//             break;
-//         case MTE_OP:
-//             if(t == INT_T){
-//                 result.i_val = (int)(L_int >= R_int);
-//             }
-//             else {
-//                 result.i_val = (int)(L_float >= R_float);
-//             }
-//             break;
-//         default:
-//             debug("NOT A CMP_OP!!!");
-//             break;
-//     }
-
-//     return result;
+    return result;
 }
 
 Value find_original_type(Value term, int cast){
