@@ -953,23 +953,19 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             if(result.type == INT_T){
                 sprintf(code_buf,"\tidiv\n");
                 gencode(code_buf);
-                // result.i_val = L_int - R_int;
             }
             else {
                 sprintf(code_buf,"\tfdiv\n");
                 gencode(code_buf);
-                // result.f_val = L_float - R_float;
             }
             break;
         case MOD_OP:
             if(result.type == INT_T){
                 sprintf(code_buf,"\tirem\n");
                 gencode(code_buf);
-                // result.i_val = L_int - R_int;
             }
             else {
                 debug("float cannot be modulized!!");
-                // result.f_val = L_float - R_float;
             }
             break;
         default:
@@ -1330,7 +1326,6 @@ Value find_assign_type(Value term1, Value term2){
                     else{
                         debug("original type is not int or float.");
                     }
-                    //printf("ID_T original type is:%d\n",term1.type);
                     return term1;
                 }
                 else{
@@ -1407,10 +1402,7 @@ void find_return_type(Value term){
                             debug("original type is not int,float,string,bool.");
                         }
                     }
-                    // sprintf(code_buf,".end method\n");
-                    // gencode(code_buf);
                     break;
-                    //printf("ID_T original type is:%d\n",term1.type);
                 }
                 else{
                     cur_entry = cur_entry->next;
