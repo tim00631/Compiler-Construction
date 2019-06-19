@@ -90,10 +90,10 @@ char* str_replace(char* string, const char* substr, const char* replacement);
 
 /* Non-terminal with return, which need to sepcify type */
 %type <op> assign_op post_op mul_op add_op cmp_op 
-%type <val> expression expression_stat
+%type <val> expression 
 %type <val> postfix_expr multiplication_expr addition_expr comparison_expr
 %type <val> parenthesis_clause
-%type <val> constant function_call func
+%type <val> constant function_call
 %type <val> type
 
 /* Yacc will start at this nonterminal */
@@ -119,6 +119,7 @@ stat
 expression_stat
     : postfix_expr SEMICOLON
     | function_call SEMICOLON
+    | SEMICOLON
     ;
 expression
     : comparison_expr {$$ = $1;}
@@ -146,17 +147,16 @@ parameter
     : type ID { insert_symbol(cur_header, $2, "parameter", $1, NaV); }
     ; 
 function_call
-    :   ID { debug("functioncall!!!!!!");undeclared_check($1.string, "function"); } 
-        '(' argument_list ')' 
-         { debug("lol"); $$ = do_function_call($1);}
+    :   ID { undeclared_check($1.string, "function"); } 
+        '(' argument_list ')' { $$ = do_function_call($1);}
     ;
 argument_list
     : argument_list ',' expression { do_load_attribute($3); }
-    | expression { printf("argument~~~%s\n",$1.string);do_load_attribute($1); }
+    | expression { do_load_attribute($1); }
     |
     ;
 assign_stat
-    : ID { debug("assign_id"); undeclared_check($1.string, "variable"); } assign_op {debug("equalaa");} expression SEMICOLON { debug("assign'SEMICOLON!");do_assign_expr($1, $3, $5);}
+    : ID {undeclared_check($1.string, "variable"); } assign_op expression SEMICOLON {do_assign_expr($1, $3, $4);}
     ;
 assign_op
     : '=' {$$ = ASGN_OP;}
@@ -175,7 +175,37 @@ while_stat
     : WHILE expression block
     ;
 block
-    : lb program rb 
+    : lb program rb  
+    ;
+comparison_expr
+    : addition_expr {$$ = $1;}
+    | comparison_expr cmp_op addition_expr { $$ = do_comparison_expr($1, $2, $3); }
+    ;
+addition_expr
+    : multiplication_expr {$$ = $1;}
+    | addition_expr add_op multiplication_expr { $$ = do_addition_expr($1, $2, $3); }
+    ;
+multiplication_expr
+    : postfix_expr {$$ = $1;}
+    | multiplication_expr mul_op postfix_expr { $$ = do_multiplication_expr($1, $2, $3); }
+    ;
+postfix_expr
+    : parenthesis_clause { $$ = $1; }
+    | parenthesis_clause post_op { $$ = do_postfix_expr($1, $2); }
+    ;
+parenthesis_clause
+    : constant { $$ = $1; }
+    | ID { undeclared_check($1.string, "variable"); $$ = $1;}
+    | '(' expression ')' { $$ = $2;}
+    | function_call { $$ = $1; }
+    ;
+return_stat
+    : RETURN SEMICOLON { do_return_stat(NaV); }
+	| RETURN expression SEMICOLON{ do_return_stat($2); }
+	;
+print_func
+    : PRINT '(' expression ')' SEMICOLON { do_print($3); }
+    | PRINT '(' '"' STRING '"' ')' SEMICOLON { do_print($4); }
     ;
 lb
     : '{' 
@@ -211,37 +241,6 @@ cmp_op
     | EQ { $$ = EQ_OP; }
     | NE { $$ = NE_OP; }
     ;
-parenthesis_clause
-    : constant { $$ = $1; }
-    | ID { debug("IDIDIDIDIDIDIID"); undeclared_check($1.string, "variable"); $$ = $1;}
-    | '(' expression ')' { $$ = $2; }
-    | function_call { $$ = $1; }
-    ;
-postfix_expr
-    : parenthesis_clause { $$ = $1; }
-    | parenthesis_clause post_op { $$ = do_postfix_expr($1, $2); }
-    ;
-multiplication_expr
-    : postfix_expr {$$ = $1;}
-    | multiplication_expr mul_op postfix_expr { $$ = do_multiplication_expr($1, $2, $3); }
-    ;
-addition_expr
-    : multiplication_expr {$$ = $1;}
-    | addition_expr add_op multiplication_expr { $$ = do_addition_expr($1, $2, $3); }
-    ;
-comparison_expr
-    : addition_expr {$$ = $1;}
-    | comparison_expr cmp_op addition_expr { $$ = do_comparison_expr($1, $2, $3); }
-    ;
-return_stat
-    : RETURN SEMICOLON { do_return_stat(NaV); }
-	| RETURN expression SEMICOLON{ do_return_stat($2); }
-	;
-print_func
-    : PRINT '(' expression ')' SEMICOLON { do_print($3); }
-    | PRINT '(' '"' STRING '"' ')' SEMICOLON { do_print($4); }
-    ;
-
 %%
 
 /* C code section */
@@ -338,9 +337,6 @@ void insert_symbol(Header *header, Value id, char* kind, Value type, Value R_val
         if(!strcmp(kind,"variable")){
             do_declaration_stat(temp->index, type, id, R_val);
         }
-        // else if(!strcmp(kind,"parameter")){
-        //     do_declaration_stat(temp->index, type, id, R_val);
-        // }
         else if(!strcmp(kind, "function")){ 
             do_function_definition(temp);
         }
@@ -359,7 +355,6 @@ char* add_attribute(Header *header){
             if(n == 0){
                 n++;
                 strcpy(temp,cur->type);
-                //attribute_gencode(cur->index, cur->type, cur, NAV);
             }
             else{
                 strcat(temp,",");
@@ -457,33 +452,6 @@ void redeclared_check(char* name, char* kind){
 void gencode(char *s) {
     fprintf(file, "%s", s);
 }
-// void attribute_gencode(int index, char* type, Value R_val){
-//     debug("do_declaration");
-//     if(index == -1){
-//         debug("not found declaration");
-//     }
-//     switch (type.type){
-//         case INT_T:
-//             sprintf(code_buf,"\tiload %d\n", R_val.i_val, index);
-//             strcat(attr_codebuf,code_buf);
-//             break;
-//         case FLOAT_T:
-//             sprintf(code_buf,"\tiload %i\n", R_val.f_val, index); 
-//             strcat(attr_codebuf,code_buf);
-//             break;
-//         case STRING_T:
-//             sprintf(code_buf,"\tldc \"%s\"\n\tastore %i\n", R_val.string, index);
-//             strcat(attr_codebuf,code_buf); 
-//             break;
-//         case BOOL_T:
-//             sprintf(code_buf,"\tldc %i\n\tistore %i\n", R_val.i_val, index);
-//             strcat(attr_codebuf,code_buf); 
-//             break;
-//         default:
-//             printf("%s,%d\n",id,type.type);
-//             debug("variable type is not int,float,string,bool. line 475");
-//     }
-// }
 
 void do_declaration_stat(int index, Value type, Value id, Value R_val){
     debug("do_declaration");
@@ -522,6 +490,9 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
     else if(!strcmp(R_val.string,"calculated")){ 
         switch (type.type){
             case INT_T:
+                if(R_val.type == FLOAT_T){
+                    gencode("\tf2i\n");
+                }
                 sprintf(code_buf,"\tistore %d\n", index);
                 gencode(code_buf); 
                 break;
@@ -545,7 +516,16 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
     else{
         switch (type.type){
             case INT_T:
-                sprintf(code_buf,"\tldc %d\n\tistore %d\n", R_val.i_val, index);
+                if(R_val.type == FLOAT_T){
+                    sprintf(code_buf,"\tldc %f\n",R_val.f_val);
+                    gencode(code_buf);
+                    gencode("\tf2i\n");
+                }
+                else{
+                    sprintf(code_buf,"\tldc %i\n",R_val.i_val);
+                    gencode(code_buf);
+                }
+                sprintf(code_buf,"\tistore %d\n", index);
                 gencode(code_buf); 
                 break;
             case FLOAT_T:
@@ -1266,22 +1246,21 @@ Value find_original_type(Value term, int cast){
         }
         debug("not found ID_T original type");
 }
-Value find_assign_type(Value term, Value term2){
+Value find_assign_type(Value term1, Value term2){
     debug("find_assign_type");
-    printf("term1: %d term2: %d\n",term.type,term2.type);
+    printf("term1: %d term2: %d\n",term1.type,term2.type);
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
             while(cur_entry != NULL){
-                if(!strcmp(cur_entry->name,term.string)){
+                if(!strcmp(cur_entry->name,term1.string)){
                     if(!strcmp(cur_entry->type,"int")){
-                        term.type = INT_T;
                         if(ptr->depth == 0){
                             if(term2.type == FLOAT_T){
                                 sprintf(code_buf,"\tf2i\n");
                                 gencode(code_buf);
                             }
-                            sprintf(code_buf,"\tputstatic compiler_hw3/%s %s\n",term.string,convert_type(INT_T));
+                            sprintf(code_buf,"\tputstatic compiler_hw3/%s %s\n",term1.string,convert_type(INT_T));
                             gencode(code_buf);
                         }
                         else{
@@ -1292,15 +1271,17 @@ Value find_assign_type(Value term, Value term2){
                             sprintf(code_buf,"\tistore %d\n",cur_entry->index);
                             gencode(code_buf);
                         }
+                        term1.type = INT_T;
+
                     }
                     else if(!strcmp(cur_entry->type,"float")){
-                        term.type = FLOAT_T;
+                        term1.type = FLOAT_T;
                         if(ptr->depth == 0){
                             if(term2.type == INT_T){
                                 sprintf(code_buf,"\ti2f\n");
                                 gencode(code_buf);
                             }
-                            sprintf(code_buf,"\tputstatic compiler_hw3/%s %s\n",term.string,convert_type(FLOAT_T));
+                            sprintf(code_buf,"\tputstatic compiler_hw3/%s %s\n",term1.string,convert_type(FLOAT_T));
                             gencode(code_buf);
                         }
                         else{
@@ -1316,7 +1297,7 @@ Value find_assign_type(Value term, Value term2){
                         debug("original type is not int or float.");
                     }
                     //printf("ID_T original type is:%d\n",term1.type);
-                    return term;
+                    return term1;
                 }
                 else{
                     cur_entry = cur_entry->next;
@@ -1406,8 +1387,8 @@ void find_return_type(Value term){
         debug("not found ID_T original type");
 }
 void do_load_attribute(Value term1){
-    printf("%d,%s\n",term1.type,term1.string);
     debug("do_load_attribute");
+    printf("type:%d,addtribute name:%s\n",term1.type,term1.string);
     find_original_type(term1,0);
 }
 

@@ -198,7 +198,7 @@ id			{letter}+({letter}|{digit})*
 
 [ \t]		{ CONCAT;  } /* Ignore */
 [^ \t\n] 	{ CONCAT;  } /* Ignore other charactor sets */
-<<EOF>>     { static int once = 0; return once++ ? 0 : SEMICOLON; }
+<<EOF>>     { yyterminate(); }
 
 %%
 

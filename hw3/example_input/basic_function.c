@@ -9,9 +9,7 @@ void lol(int a) {
 }
 
 void main(){
-   int a;
-   a =  3;
-   a = foo(4);
+   int a = foo(4);
    lol(a);
    return;
 }
