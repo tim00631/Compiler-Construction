@@ -362,7 +362,6 @@ void create_symbol_table() {
 void insert_symbol(Header *header, Value id, char* kind, Value type, Value R_val){
     //printf("insert_symbol %s\n",id.string);
     if(header == NULL){
-        debug("fuck");
         header = header_root;
     }
     if(cur_header == NULL){
@@ -642,7 +641,6 @@ void do_function_definition(Entry* temp){
     gencode(code_buf);
     sprintf(code_buf,".limit locals 50\n");
     gencode(code_buf);
-    //gencode(attr_codebuf);
 
 }
 char* str_replace(char* string, const char* substr, const char* replacement) {
@@ -759,7 +757,7 @@ void do_print(Value term1){
             gencode(code_buf);
             break;
         case STRING_T:
-            sprintf(code_buf,"\tldc %s\n",term1.string);
+            sprintf(code_buf,"\tldc \"%s\"\n",term1.string);
             gencode(code_buf);
             break;
     }
@@ -908,12 +906,10 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             if(result.type == INT_T){
                 sprintf(code_buf,"\timul\n");
                 gencode(code_buf);
-                // result.i_val = L_int + R_int;
             }
             else {
                 sprintf(code_buf,"\tfmul\n");
                 gencode(code_buf);
-                // result.f_val = L_float + R_float;
             }
             break;
         case DIV_OP:
@@ -1239,6 +1235,17 @@ Value find_original_type(Value term, int cast){
                         }
                         else{
                             sprintf(code_buf,"\tfload %d\n",cur_entry->index);
+                            gencode(code_buf);
+                        }
+                    }
+                    else if(!strcmp(cur_entry->type,"string")){
+                        term.type = STRING_T;
+                        if(ptr->depth == 0){
+                            sprintf(code_buf,"\tgetstatic compiler_hw3/%s %s\n",term.string,convert_type(STRING_T));
+                            gencode(code_buf);
+                        }
+                        else{
+                            sprintf(code_buf,"\taload %d\n",cur_entry->index);
                             gencode(code_buf);
                         }
                     }
