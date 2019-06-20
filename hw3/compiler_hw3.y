@@ -63,6 +63,7 @@ void do_assign_expr(Value term1, Operator op, Value term2);
 void do_return_stat(Value term1);
 void do_print(Value term1);
 void do_load_attribute(Value term1);
+void do_loading(Value term1, Value term2);
 void find_return_type(Value term);
 Value find_assign_type(Value term, Value term2);                
 Value do_postfix_expr(Value term1, Operator op);
@@ -547,6 +548,9 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
                 gencode(code_buf); 
                 break;
             case FLOAT_T:
+                if(R_val.type == INT_T){
+                    gencode("\ti2f\n");
+                }
                 sprintf(code_buf,"\tfstore %i\n", index); 
                 gencode(code_buf);
                 break;
@@ -816,83 +820,84 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
     debug("do_multiplication");
     Value result;
     int cast = 0;
-    if(term1.state == Calculated){
-        debug("calculated, don't need to load Lvalue.");
-        if(term1.type == FLOAT_T){
-            cast = 1;
-        }
-    }
-    else{
-        switch (term1.type){
-            case ID_T:
-                term1 = find_original_type(term1,0);
-                break;
-            case INT_T:
-                sprintf(code_buf,"\tldc %d\n",term1.i_val);
-                gencode(code_buf);
-                break;
-            case FLOAT_T:
-                sprintf(code_buf,"\tldc %f\n",term1.f_val);
-                gencode(code_buf);
-                cast = 1;
-                break;
-            default:
-                debug("error type of addition");
-                break;
-        }
-    }
-    switch (term2.type){
-        case ID_T:
-            term2 = find_original_type(term2, cast);
-            break;
-        case INT_T:
-            if(term2.state == Calculated){
-                debug("calculated, don't need to reload Rvalue.");
-                if(term1.state == Calculated){
-                    if(term1.type == FLOAT_T){
-                        gencode("\ti2f\n");
-                    }   
-                    else{
-                        debug("both are calculated.");
-                    }  
-                }
-                else{
-                    if(term1.type == FLOAT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                    }
-                }              
-            }
-            else{
-                sprintf(code_buf,"\tldc %d\n",term2.i_val);
-                gencode(code_buf);
-                if(term1.type == FLOAT_T){
-                    sprintf(code_buf,"\ti2f\n");
-                    gencode(code_buf);
-                }
-            }
-            break;
-        case FLOAT_T:
-            if(term2.state == Calculated){
-                if(term1.state == Calculated){
-                    if(term1.type == INT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                    }
-                }
-            }
-            else{
-                if(term1.type == INT_T){
-                    gencode("\ti2f\n");
-                }
-                sprintf(code_buf,"\tldc %f\n",term2.f_val);
-                gencode(code_buf);
-            }
-            break;
-        default:
-            debug("error type of addition");
-            break;
-    }
+    do_loading(term1,term2);
+    // if(term1.state == Calculated){
+    //     debug("calculated, don't need to load Lvalue.");
+    //     if(term1.type == FLOAT_T){
+    //         cast = 1;
+    //     }
+    // }
+    // else{
+    //     switch (term1.type){
+    //         case ID_T:
+    //             term1 = find_original_type(term1,0);
+    //             break;
+    //         case INT_T:
+    //             sprintf(code_buf,"\tldc %d\n",term1.i_val);
+    //             gencode(code_buf);
+    //             break;
+    //         case FLOAT_T:
+    //             sprintf(code_buf,"\tldc %f\n",term1.f_val);
+    //             gencode(code_buf);
+    //             cast = 1;
+    //             break;
+    //         default:
+    //             debug("error type of arthimatic");
+    //             break;
+    //     }
+    // }
+    // switch (term2.type){
+    //     case ID_T:
+    //         term2 = find_original_type(term2, cast);
+    //         break;
+    //     case INT_T:
+    //         if(term2.state == Calculated){
+    //             debug("calculated, don't need to reload Rvalue.");
+    //             if(term1.state == Calculated){
+    //                 if(term1.type == FLOAT_T){
+    //                     gencode("\ti2f\n");
+    //                 }   
+    //                 else{
+    //                     debug("both are calculated.");
+    //                 }  
+    //             }
+    //             else{
+    //                 if(term1.type == FLOAT_T){
+    //                     gencode("\tswap\n");
+    //                     gencode("\ti2f\n");
+    //                 }
+    //             }              
+    //         }
+    //         else{
+    //             sprintf(code_buf,"\tldc %d\n",term2.i_val);
+    //             gencode(code_buf);
+    //             if(term1.type == FLOAT_T){
+    //                 sprintf(code_buf,"\ti2f\n");
+    //                 gencode(code_buf);
+    //             }
+    //         }
+    //         break;
+    //     case FLOAT_T:
+    //         if(term2.state == Calculated){
+    //             if(term1.state == Calculated){
+    //                 if(term1.type == INT_T){
+    //                     gencode("\tswap\n");
+    //                     gencode("\ti2f\n");
+    //                 }
+    //             }
+    //         }
+    //         else{
+    //             if(term1.type == INT_T){
+    //                 gencode("\ti2f\n");
+    //             }
+    //             sprintf(code_buf,"\tldc %f\n",term2.f_val);
+    //             gencode(code_buf);
+    //         }
+    //         break;
+    //     default:
+    //         debug("error type of addition");
+    //         break;
+    // }
     printf("term1:%d term2:%d \n",term1.type,term2.type);
     if(term1.type == FLOAT_T || term2.type == FLOAT_T){
         result.type = FLOAT_T;
@@ -942,86 +947,87 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
     debug("do_addition");
     Value result;
     int cast = 0;
-    if(term1.state == Calculated){
-        debug("calculated, don't need to load Lvalue.");
-        if(term1.type == FLOAT_T){
-            cast = 1;
-        }
-    }
-    else{
-        switch (term1.type){
-            case ID_T:
-                term1 = find_original_type(term1,0);
-                break;
-            case INT_T:
-                sprintf(code_buf,"\tldc %d\n",term1.i_val);
-                gencode(code_buf);
-                break;
-            case FLOAT_T:
-                sprintf(code_buf,"\tldc %f\n",term1.f_val);
-                gencode(code_buf);
-                cast = 1;
-                break;
-            default:
-                debug("error type of addition");
-                break;
-        }
-    }
-    if(term2.state == Calculated){
-        /////////
-    }
-    switch (term2.type){
-        case ID_T:
-            term2 = find_original_type(term2, cast);
-            break;
-        case INT_T:
-            if(term2.state == Calculated){
-                debug("calculated, don't need to reload Rvalue.");
-                if(term1.state == Calculated){
-                    if(term1.type == FLOAT_T){
-                        gencode("\ti2f\n");
-                    }   
-                    else{
-                        debug("both are calculated.");
-                    }  
-                }
-                else{
-                    if(term1.type == FLOAT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                    }
-                }              
-            }
-            else{
-                sprintf(code_buf,"\tldc %d\n",term2.i_val);
-                gencode(code_buf);
-                if(term1.type == FLOAT_T){
-                    sprintf(code_buf,"\ti2f\n");
-                    gencode(code_buf);
-                }
-            }
-            break;
-        case FLOAT_T:
-            if(term2.state == Calculated){
-                if(term1.state == Calculated){
-                    if(term1.type == INT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                    }
-                }
-            }
-            else{
-                if(term1.type == INT_T){
-                    gencode("\ti2f\n");
-                }
-                sprintf(code_buf,"\tldc %f\n",term2.f_val);
-                gencode(code_buf);
-            }
-            break;
-        default:
-            debug("error type of addition");
-            break;
-    }
+    do_loading(term1,term2);
+    // if(term1.state == Calculated){
+    //     debug("calculated, don't need to load Lvalue.");
+    //     if(term1.type == FLOAT_T){
+    //         cast = 1;
+    //     }
+    // }
+    // else{
+    //     switch (term1.type){
+    //         case ID_T:
+    //             term1 = find_original_type(term1,0);
+    //             break;
+    //         case INT_T:
+    //             sprintf(code_buf,"\tldc %d\n",term1.i_val);
+    //             gencode(code_buf);
+    //             break;
+    //         case FLOAT_T:
+    //             sprintf(code_buf,"\tldc %f\n",term1.f_val);
+    //             gencode(code_buf);
+    //             cast = 1;
+    //             break;
+    //         default:
+    //             debug("error type of addition");
+    //             break;
+    //     }
+    // }
+    // if(term2.state == Calculated){
+    //     /////////
+    // }
+    // switch (term2.type){
+    //     case ID_T:
+    //         term2 = find_original_type(term2, cast);
+    //         break;
+    //     case INT_T:
+    //         if(term2.state == Calculated){
+    //             debug("calculated, don't need to reload Rvalue.");
+    //             if(term1.state == Calculated){
+    //                 if(term1.type == FLOAT_T){
+    //                     gencode("\ti2f\n");
+    //                 }   
+    //                 else{
+    //                     debug("both are calculated.");
+    //                 }  
+    //             }
+    //             else{
+    //                 if(term1.type == FLOAT_T){
+    //                     gencode("\tswap\n");
+    //                     gencode("\ti2f\n");
+    //                 }
+    //             }              
+    //         }
+    //         else{
+    //             sprintf(code_buf,"\tldc %d\n",term2.i_val);
+    //             gencode(code_buf);
+    //             if(term1.type == FLOAT_T){
+    //                 sprintf(code_buf,"\ti2f\n");
+    //                 gencode(code_buf);
+    //             }
+    //         }
+    //         break;
+    //     case FLOAT_T:
+    //         if(term2.state == Calculated){
+    //             if(term1.state == Calculated){
+    //                 if(term1.type == INT_T){
+    //                     gencode("\tswap\n");
+    //                     gencode("\ti2f\n");
+    //                 }
+    //             }
+    //         }
+    //         else{
+    //             if(term1.type == INT_T){
+    //                 gencode("\ti2f\n");
+    //             }
+    //             sprintf(code_buf,"\tldc %f\n",term2.f_val);
+    //             gencode(code_buf);
+    //         }
+    //         break;
+    //     default:
+    //         debug("error type of addition");
+    //         break;
+    // }
     printf("term1:%d term2:%d \n",term1.type,term2.type);
     if(term1.type == FLOAT_T || term2.type == FLOAT_T){
         result.type = FLOAT_T;
@@ -1457,4 +1463,93 @@ Value do_function_call(Value id){
     gencode(code_buf);
     id.state = Calculated;
     return id;
+}
+
+void do_loading(Value term1, Value term2){
+    Value result;
+    int cast = 0;
+    if(term1.state == Calculated){
+        debug("calculated, don't need to load Lvalue.");
+        if(term1.type == FLOAT_T){
+            cast = 1;
+        }
+    }
+    else{
+        switch (term1.type){
+            case ID_T:
+                term1 = find_original_type(term1,0);
+                break;
+            case INT_T:
+                    sprintf(code_buf,"\tldc %d\n",term1.i_val);
+                    gencode(code_buf);
+                    if(term2.state == Calculated && term2.type == FLOAT_T){
+                        gencode("\ti2f\n");
+                    }
+                break;
+            case FLOAT_T:
+                sprintf(code_buf,"\tldc %f\n",term1.f_val);
+                gencode(code_buf);
+                cast = 1;
+                break;
+            default:
+                debug("error type of addition");
+                break;
+        }
+    }
+
+    switch (term2.type){
+        case ID_T:
+            term2 = find_original_type(term2, cast);
+            break;
+        case INT_T:
+            if(term2.state == Calculated){
+                debug("calculated, don't need to reload Rvalue.");
+                if(term1.state == Calculated){
+                    if(term1.type == FLOAT_T){
+                        gencode("\ti2f\n");
+                    }   
+                    else{
+                        debug("both are calculated.");
+                    }  
+                }
+                else{
+                    if(term1.type == FLOAT_T){
+                        gencode("\tswap\n");
+                        gencode("\ti2f\n");
+                    }
+                }              
+            }
+            else{
+                sprintf(code_buf,"\tldc %d\n",term2.i_val);
+                gencode(code_buf);
+                if(term1.type == FLOAT_T){
+                    sprintf(code_buf,"\ti2f\n");
+                    gencode(code_buf);
+                }
+            }
+            break;
+        case FLOAT_T:
+            if(term2.state == Calculated){
+                if(term1.state == Calculated){
+                    if(term1.type == INT_T){
+                        gencode("\tswap\n");
+                        gencode("\ti2f\n");
+                    }
+                }
+                else{
+                    debug("impossible");        
+                }
+            }
+            else{
+                if(term1.type == INT_T){
+                    gencode("\ti2f\n");
+                }
+                sprintf(code_buf,"\tldc %f\n",term2.f_val);
+                gencode(code_buf);
+            }
+            break;
+        default:
+            debug("error type of addition");
+            break;
+    }
 }
