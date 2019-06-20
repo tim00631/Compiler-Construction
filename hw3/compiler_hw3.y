@@ -242,20 +242,30 @@ if_stat
     ;
 while_stat
     : WHILE {
-        sprintf(code_buf, "L_WHILE_%d_%d", while_count, depth);
+        sprintf(code_buf, "LABEL_BEGIN_%d", while_count);
 		gencode(code_buf);	
 		gencode(":\n");
     }
     '(' expression ')' {
-        sprintf(code_buf, "\tifeq L_WHILE_EXIT_%d_%d\n", while_count, depth);
+        sprintf(code_buf, " LABEL_TRUE_%d\n",while_count);
+        gencode(code_buf);
+        sprintf(code_buf, "\tgoto LABEL_FALSE_%d\n", while_count);
 		gencode(code_buf);
-    }
-    compound_stat {
-        sprintf(code_buf, "\tgoto L_WHILE_%d_%d\n", while_count, depth);
-		gencode(code_buf);
-		sprintf(code_buf, "L_WHILE_EXIT_%d_%d", while_count, depth);
+		sprintf(code_buf, "LABEL_TRUE_%d", while_count);
 		gencode(code_buf);
 		gencode(":\n");
+    }
+    compound_stat {
+        sprintf(code_buf, "\tgoto LABEL_BEGIN_%d\n", while_count);
+		gencode(code_buf);
+		sprintf(code_buf, "LABEL_FALSE_%d", while_count);
+		gencode(code_buf);
+		gencode(":\n");
+        sprintf(code_buf, "\tgoto EXIT_%d\n", while_count);
+		gencode(code_buf);
+        sprintf(code_buf, "EXIT_%d", while_count);
+		gencode(code_buf);
+		gencode(":\n");        
 		while_count++;
     }
     ;
@@ -769,8 +779,11 @@ void do_print(Value term1){
     sprintf(code_buf,"\tswap\n\tinvokevirtual java/io/PrintStream/println(%s)V\n", convert_type(term1.type));
     gencode(code_buf);
 }
-Value do_postfix_expr(Value term1, Operator op){  
+Value do_postfix_expr(Value term1, Operator op){
+    debug("do_postfix_expr");  
     Value temp = find_original_type(term1,0);
+    printf("term1.type == %d\n",term1.type);
+    printf("temp.type == %d\n",temp.type);
     if(temp.type == INT_T){
         switch(op){
             case INC_OP:
@@ -813,8 +826,8 @@ Value do_postfix_expr(Value term1, Operator op){
         debug("term1 type is not int or float ,in postfix");
         printf("type::%d\n",term1.type);
     }
-    temp.state = Calculated;
-    return temp;
+    term1.state = Calculated;
+    return term1;
 }
 Value do_multiplication_expr(Value term1, Operator op, Value term2){
     debug("do_multiplication");
@@ -910,137 +923,92 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
 Value do_comparison_expr(Value term1, Operator op, Value term2){
     debug("do_comparison");
     Value result;
-    int cast = 0;
-    if(term1.state == Calculated){
+    if(term1.state == Calculated){ //term1 calculated
         debug("calculated, don't need to load Lvalue.");
-        if(term1.type == FLOAT_T){
-            cast = 1;
-        }
     }
-    else{
+    else{ //term1 not calculated
         switch (term1.type){
             case ID_T:
-                term1 = find_original_type(term1,0);
+                term1 = find_original_type(term1,0); //load in
                 break;
             case INT_T:
                 sprintf(code_buf,"\tldc %d\n",term1.i_val);
                 gencode(code_buf);
+                if(term2.state == Calculated){
+                    gencode("\tswap\n");
+                }
                 break;
             case FLOAT_T:
                 sprintf(code_buf,"\tldc %f\n",term1.f_val);
                 gencode(code_buf);
-                cast = 1;
                 break;
             default:
                 debug("error type of addition");
                 break;
         }
     }
-    switch (term2.type){
-        case ID_T:
-            term2 = find_original_type(term2, cast);
-            break;
-        case INT_T:
-            if(term2.state == Calculated){
-                debug("calculated, don't need to reload Rvalue.");
-                if(term1.state == Calculated){
-                    if(term1.type == FLOAT_T){
-                        gencode("\ti2f\n");
-                    }   
-                    else{
-                        debug("both are calculated.");
-                    }  
-                }
-                else{
-                    if(term1.type == FLOAT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                    }
-                }              
-            }
-            else{
-                sprintf(code_buf,"\tldc %d\n",term2.i_val);
+    if(term2.state == Calculated){
+        debug("calculated, don't need to reload Rvalue.");
+    }
+    else{
+        switch (term2.type){
+            case ID_T:
+                term2 = find_original_type(term2, 0);
+                break;
+            case INT_T:
+                sprintf(code_buf,"\tldc %i\n",term2.i_val);
                 gencode(code_buf);
-                if(term1.type == FLOAT_T){
-                    sprintf(code_buf,"\ti2f\n");
-                    gencode(code_buf);
-                }
-            }
-            break;
-        case FLOAT_T:
-            if(term2.state == Calculated){
-                if(term1.state == Calculated){
-                    if(term1.type == INT_T){
-                        gencode("\tswap\n");
-                        gencode("\ti2f\n");
-                        gencode("\tswap\n");
-                    }
-                    else{
-                        // no need to swap
-                    }
-                }
-                else{
-                    if(term1.type == INT){
-                        gencode("i2f");
-                        gencode("\tswap\n");
-                    }
-                    else{
-                        gencode("\tswap\n");
-                    }
-                }
-            }
-            else{
-                if(term1.type == INT_T){
-                    gencode("\ti2f\n");
-                }
-                else{
-
-                }
+                break;
+            case FLOAT_T:
                 sprintf(code_buf,"\tldc %f\n",term2.f_val);
                 gencode(code_buf);
-            }
-            break;
-        default:
-            debug("error type of addition");
-            break;
+                break;
+            default:
+                debug("error type of addition");
+                break;
+        }
+    }
+    //
+    if(term1.type == INT_T && term2.type == INT_T){
+        gencode("\tisub\n");
+    }
+    else if (term1.type == FLOAT_T && term2.type == FLOAT_T){
+        gencode("\tfsub\n");
+    }
+    else{
+        debug("type conflict in comparison");
     }
     printf("term1:%d term2:%d \n",term1.type,term2.type);
-    if(term1.type == FLOAT_T || term2.type == FLOAT_T){
-        result.type = FLOAT_T;
-    }
-    else {
-        result.type = INT_T;
-    }
-    printf("result type: %d\n",result.type);
+    result.type = INT_T;
+    // printf("result type: %d\n",result.type);
     switch (op){
         case EQ_OP:
-            gencode("ifeq");
+            gencode("\tifeq");
             break;
         case NE_OP:
-            gencode("ifne");
+            gencode("\tifne");
             break;
         case LT_OP:
-            gencode("iflt");
+            gencode("\tiflt");
             break;
         case LTE_OP:
-            gencode("ifle");
+            gencode("\tifle");
             break;
         case MT_OP:
-            gencode("ifgt");
+            gencode("\tifgt");
             break;
         case MTE_OP:
-            gencode("ifge");
+            gencode("\tifge");
             break;
         default:
             debug("NOT A CMP_OP!!!");
             break;
     }
-
     return result;
 }
 
 Value find_original_type(Value term, int cast){
-    //debug("find_original_type");
+    debug("find_original_type");
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
@@ -1113,13 +1081,14 @@ Value find_original_type(Value term, int cast){
 }
 Value find_assign_type(Value term1, Value term2){
     debug("find_assign_type");
-    printf("term1: %d term2: %d\n",term1.type,term2.type);
+    printf("term1%s: %d term2: %d\n",term1.string,term1.type,term2.type);
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
             while(cur_entry != NULL){
                 if(!strcmp(cur_entry->name,term1.string)){
                     if(!strcmp(cur_entry->type,"int")){
+                        debug("i found term1 type is int");
                         if(ptr->depth == 0){
                             if(term2.type == FLOAT_T){
                                 sprintf(code_buf,"\tf2i\n");
@@ -1167,8 +1136,8 @@ Value find_assign_type(Value term1, Value term2){
                     cur_entry = cur_entry->next;
                 }
             }
-        }
             ptr = ptr->pre;
+        }
         debug("not found ID_T original type");   
 }
 
