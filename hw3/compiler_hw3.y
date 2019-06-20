@@ -1252,7 +1252,6 @@ Value find_original_type(Value term, int cast){
                     else{
                         debug("original type is not int or float.");
                     }
-                    //printf("ID_T original type is:%d\n",term1.type);
                     return term;
                 }
                 else{
