@@ -34,6 +34,7 @@ struct Header {
 Header *header_root = NULL; // connect these headers
 Header *cur_header = NULL; // current header
 int depth = 0;
+int while_count = 0;
 Value NaV;
 
 extern int syntax_error;
@@ -103,26 +104,66 @@ char* str_replace(char* string, const char* substr, const char* replacement);
 %%
 
 program
-    : program stat 
-    | 
+    : declare_list
+    ;
+declare_list
+	: declare_list declare
+	| declare
+	;
+declare
+    : global_var_declaration
+    | func_declaration
+    ;
+global_var_declaration
+    : type ID '=' constant SEMICOLON {
+        insert_symbol(cur_header, $2, "variable", $1, $4);
+    }
+    | type ID SEMICOLON {
+        insert_symbol(cur_header, $2, "variable", $1, NaV);
+    }
+    ;
+func_declaration
+    : type ID '(' {
+        create_symbol_table();
+    } paras ')' {
+        insert_symbol(cur_header->pre, $2, "function", $1, NaV);
+    } func_block
+    ;
+paras
+    : parameter_list
+    | VOID
+parameter_list
+	: parameter_list ',' parameter 
+	| parameter 
+	;
+parameter
+    : type ID {
+        insert_symbol(cur_header, $2, "parameter", $1, NaV);
+    }
+    |
+    ; 
+func_block
+    : '{' content_list '}' {dump_flag = 1;} 
+    ;
+compound_stat
+    : '{' {create_symbol_table();} content_list '}' {dump_flag = 1;}
+    ;
+content_list
+    : content_list content
+    |
+    ;
+content
+    : stat
+    | declaration
     ;
 stat
-    : declaration
-    | func_declaration
-    | assign_stat
+    : assign_stat
+    | expression_stat
     | if_stat 
     | while_stat 
-    | expression_stat 
+    | compound_stat 
     | return_stat 
     | print_func
-    ;
-expression_stat
-    : postfix_expr SEMICOLON
-    | function_call SEMICOLON
-    | SEMICOLON
-    ;
-expression
-    : comparison_expr {$$ = $1;}
     ;
 declaration
     : type ID '=' expression SEMICOLON { insert_symbol(cur_header, $2, "variable", $1, $4); }
@@ -135,28 +176,11 @@ type
     | STRING { $$ = $1; }
     | VOID { $$ = $1; }
     ;
-func_declaration
-    : type ID '(' { create_symbol_table(); } parameter_list ')' {insert_symbol(cur_header->pre, $2, "function", $1, NaV); } block { dump_flag = 1; } 
-    ;
-parameter_list
-	: parameter 
-	| parameter_list ',' parameter 
-    | 
-	;
-parameter
-    : type ID { insert_symbol(cur_header, $2, "parameter", $1, NaV); }
-    ; 
-function_call
-    :   ID { undeclared_check($1.string, "function"); } 
-        '(' argument_list ')' { $$ = do_function_call($1);}
-    ;
-argument_list
-    : argument_list ',' expression { do_load_attribute($3); }
-    | expression { do_load_attribute($1); }
-    |
-    ;
 assign_stat
-    : ID {undeclared_check($1.string, "variable"); } assign_op expression SEMICOLON {do_assign_expr($1, $3, $4);}
+    : ID assign_op expression SEMICOLON {
+        undeclared_check($1.string, "variable"); 
+        do_assign_expr($1, $2, $3);
+    }
     ;
 assign_op
     : '=' {$$ = ASGN_OP;}
@@ -166,16 +190,8 @@ assign_op
     | DIVASGN {$$ = DIVASGN_OP;}
     | MODASGN {$$ = MODASGN_OP;}
     ;
-if_stat
-    : IF expression block
-    | IF expression block ELSE block
-    | IF expression block ELSE if_stat
-    ;
-while_stat
-    : WHILE expression block
-    ;
-block
-    : lb program rb  
+expression
+    : comparison_expr {$$ = $1;}
     ;
 comparison_expr
     : addition_expr {$$ = $1;}
@@ -195,9 +211,52 @@ postfix_expr
     ;
 parenthesis_clause
     : constant { $$ = $1; }
-    | ID { undeclared_check($1.string, "variable"); $$ = $1;}
-    | '(' expression ')' { $$ = $2;}
+    | ID { debug($1.string); undeclared_check($1.string, "variable"); $$ = $1;}
     | function_call { $$ = $1; }
+    | '(' expression ')' { $$ = $2;}
+    ;
+function_call
+    :   ID {
+        undeclared_check($1.string, "function");
+    } '(' argument ')' {
+        $$ = do_function_call($1);
+    }
+    ;
+argument
+    :argument_list
+    |
+    ;
+argument_list
+    : argument_list ',' expression { do_load_attribute($3);}
+    | expression { do_load_attribute($1); }
+    ;
+expression_stat
+    : postfix_expr SEMICOLON {gencode("\tpop\n");}
+    | function_call SEMICOLON
+    ;
+if_stat
+    : IF expression compound_stat
+    | IF expression compound_stat ELSE compound_stat
+    | IF expression compound_stat ELSE if_stat
+    ;
+while_stat
+    : WHILE {
+        sprintf(code_buf, "L_WHILE_%d_%d", while_count, depth);
+		gencode(code_buf);	
+		gencode(":\n");
+    }
+    '(' expression ')' {
+        sprintf(code_buf, "\tifeq L_WHILE_EXIT_%d_%d\n", while_count, depth);
+		gencode(code_buf);
+    }
+    compound_stat {
+        sprintf(code_buf, "\tgoto L_WHILE_%d_%d\n", while_count, depth);
+		gencode(code_buf);
+		sprintf(code_buf, "L_WHILE_EXIT_%d_%d", while_count, depth);
+		gencode(code_buf);
+		gencode(":\n");
+		while_count++;
+    }
     ;
 return_stat
     : RETURN SEMICOLON { do_return_stat(NaV); }
@@ -206,12 +265,6 @@ return_stat
 print_func
     : PRINT '(' expression ')' SEMICOLON { do_print($3); }
     | PRINT '(' '"' STRING '"' ')' SEMICOLON { do_print($4); }
-    ;
-lb
-    : '{' 
-    ;
-rb
-    : '}'
     ;
 constant
     : I_CONST {$$ = $1;}
@@ -256,8 +309,6 @@ int main(int argc, char** argv)
     fprintf(file,   ".class public compiler_hw3\n"
                     ".super java/lang/Object\n");
     yyparse();
-    // fprintf(file, "\treturn\n"
-    //               ".end method\n");
     if(!syntax_error){
         dump_symbol();
         printf("\nTotal lines: %d \n",yylineno);
@@ -487,7 +538,7 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
                 break;
         }
     }
-    else if(!strcmp(R_val.string,"calculated")){ 
+    else if(R_val.state == Calculated){ 
         switch (type.type){
             case INT_T:
                 if(R_val.type == FLOAT_T){
@@ -631,22 +682,6 @@ char* str_replace(char* string, const char* substr, const char* replacement) {
 }
 void do_assign_expr(Value term1, Operator op, Value term2){
     debug("do_assign_expr.");
-    int toint = 0;
-    int tofloat = 0;
-    Value result;    
-    // if(result.type == INT_T){
-    //     if(term2.type == FLOAT_T){
-    //         toint = 1;
-    //     }
-    // }
-    // else if(result.type == FLOAT_T){
-    //     if(term2.type == INT_T){
-    //         tofloat = 1;
-    //     }
-    // }
-    // else {
-    //     debug("term1 is string");
-    // }
     switch (op){
         case ASGN_OP:
             find_assign_type(term1,term2); //Lval must be a variable
@@ -674,86 +709,11 @@ void do_assign_expr(Value term1, Operator op, Value term2){
         default:
             break;
     }
-    int R_int;
-    float R_float;
-    int cast = 0;
-    if(term2.type == ID_T){
-        term2 = find_original_type(term2, cast);
-    }
-    if(term1.type == INT_T){
-        if(term2.type == INT_T)
-            R_int = term2.i_val;
-        else{
-            R_int = (int)term2.f_val;
-        }
-    }
-    else if(term1.type == FLOAT_T){
-        if(term2.type == INT_T)
-            R_float = (float)term2.i_val;
-        else{
-            R_float = term2.f_val;
-        }
-    }
-    switch(op){
-        case ASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val = R_int;
-            }
-            else {
-                term1.f_val = R_float;
-            }
-            break;
-        case ADDASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val += R_int;
-            }
-            else {
-                term1.f_val += R_float;
-            }
-            break;
-        case SUBASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val -= R_int;
-            }
-            else {
-                term1.f_val -= R_float;
-            }
-            break;
-        case MULASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val *= R_int;
-            }
-            else {
-                term1.f_val *= R_float;
-            }
-            break;
-        case DIVASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val /= R_int;
-            }
-            else {
-                term1.f_val /= R_float;
-            }
-            break;
-        case MODASGN_OP:
-            if(term1.type == INT_T){
-                term1.i_val %= R_int;
-            }
-            else {
-                debug("cannot MODASGN float type");
-            }
-            break;
-        default:
-            debug("NOT ASSIGN OP!!!");
-            break;
-    }
 }
 void do_return_stat(Value term1){
     printf("return type %d.\n",term1.type);
-
     if(term1.type == VOID_T || term1.type == NAT){
-        sprintf(code_buf,"\treturn\n.end method\n");
-        gencode(code_buf);
+        gencode("\treturn\n.end method\n");
     }
     else{
         switch(term1.type){
@@ -763,30 +723,25 @@ void do_return_stat(Value term1){
             case INT_T:
                 sprintf(code_buf,"\tldc %d\n",term1.i_val);
                 gencode(code_buf);
-                sprintf(code_buf,"\tireturn\n");
-                gencode(code_buf);
+                gencode("\tireturn\n");
                 break;
             case FLOAT_T:
                 sprintf(code_buf,"\tldc %f\n",term1.f_val);
                 gencode(code_buf);
-                sprintf(code_buf,"\tfreturn\n");
-                gencode(code_buf);
+                gencode("\tfreturn\n");
                 break;
             case STRING_T:
                 sprintf(code_buf,"\tldc \"%s\"\n",term1.string);
                 gencode(code_buf);
-                sprintf(code_buf,"\tareturn\n");
-                gencode(code_buf);
+                gencode("\tareturn\n");
                 break;
             case BOOL_T:
                 sprintf(code_buf,"\tldc %d\n",term1.i_val);
                 gencode(code_buf);
-                sprintf(code_buf,"\tireturn\n");
-                gencode(code_buf);
+                gencode("\tireturn\n");
                 break;
         }
-        sprintf(code_buf,".end method\n");
-        gencode(code_buf);
+        gencode(".end method\n");
     }
 }
 void do_print(Value term1){
@@ -808,50 +763,62 @@ void do_print(Value term1){
             gencode(code_buf);
             break;
     }
-    sprintf(code_buf,"\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n");
-    gencode(code_buf);
+    gencode("\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n");
     sprintf(code_buf,"\tswap\n\tinvokevirtual java/io/PrintStream/println(%s)V\n", convert_type(term1.type));
     gencode(code_buf);
 }
-Value do_postfix_expr(Value term1, Operator op){
-    Value result;
-    if(!strcmp(term1.string,"calculated")){
-
-    }
-    else{
-        switch (term1.type){
-            case ID_T:
-                term1 = find_original_type(term1,0);
+Value do_postfix_expr(Value term1, Operator op){  
+    Value temp = find_original_type(term1,0);
+    if(temp.type == INT_T){
+        switch(op){
+            case INC_OP:
+                find_original_type(term1,0);
+                gencode("\tldc 1\n");
+                gencode("\tiadd\n");
+                find_assign_type(term1,temp);
                 break;
-            case INT_T:
-                sprintf(code_buf,"\tldc %d\n",term1.i_val);
-                gencode(code_buf);
+            case DEC_OP:
+                find_original_type(term1,0);
+                gencode("\tldc 1\n");
+                gencode("\tisub\n");
+                find_assign_type(term1,temp);
                 break;
             default:
-                debug("error type in postfix expr.");
+                debug("NOT INC , DEC OP!!!");
+                break;
+        }   
+    }
+    else if(temp.type == FLOAT_T){
+        switch(op){
+            case INC_OP:
+                find_original_type(term1,0);
+                gencode("\tldc 1.0\n");
+                gencode("\tfadd\n");
+                find_assign_type(term1,temp);
+                break;
+            case DEC_OP:
+                find_original_type(term1,0);
+                gencode("\tldc 1.0\n");
+                gencode("\tfsub\n");
+                find_assign_type(term1,temp);
+                break;
+            default:
+                debug("NOT INC , DEC OP!!!");
                 break;
         }
     }
-    switch(op){
-        case INC_OP:
-            gencode("\tiinc\n");
-            break;
-        case DEC_OP:
-            gencode("\tldc -1\n");
-            gencode("\tiadd\n");
-            break;
-        default:
-            debug("NOT INC , DEC OP!!!");
-            break;
+    else{
+        debug("term1 type is not int or float ,in postfix");
+        printf("type::%d\n",term1.type);
     }
-    result.string = "calculated";
-    return term1;
+    temp.state = Calculated;
+    return temp;
 }
 Value do_multiplication_expr(Value term1, Operator op, Value term2){
     debug("do_multiplication");
     Value result;
     int cast = 0;
-    if(!strcmp(term1.string,"calculated")){
+    if(term1.state == Calculated){
         debug("calculated, don't need to load Lvalue.");
         if(term1.type == FLOAT_T){
             cast = 1;
@@ -881,9 +848,9 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             term2 = find_original_type(term2, cast);
             break;
         case INT_T:
-            if(!strcmp(term2.string,"calculated")){
+            if(term2.state == Calculated){
                 debug("calculated, don't need to reload Rvalue.");
-                if(!strcmp(term1.string,"calculated")){
+                if(term1.state == Calculated){
                     if(term1.type == FLOAT_T){
                         gencode("\ti2f\n");
                     }   
@@ -908,8 +875,8 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             }
             break;
         case FLOAT_T:
-            if(!strcmp(term2.string,"calculated")){
-                if(!strcmp(term1.string,"calculated")){
+            if(term2.state == Calculated){
+                if(term1.state == Calculated){
                     if(term1.type == INT_T){
                         gencode("\tswap\n");
                         gencode("\ti2f\n");
@@ -972,14 +939,14 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             debug("NOT * / % OP!!!");
             break;
     }
-    result.string = "calculated";
+    result.state = Calculated;
     return result;
 }
 Value do_addition_expr(Value term1, Operator op, Value term2){
     debug("do_addition");
     Value result;
     int cast = 0;
-    if(!strcmp(term1.string,"calculated")){
+    if(term1.state == Calculated){
         debug("calculated, don't need to load Lvalue.");
         if(term1.type == FLOAT_T){
             cast = 1;
@@ -1004,14 +971,17 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
                 break;
         }
     }
+    if(term2.state == Calculated){
+        /////////
+    }
     switch (term2.type){
         case ID_T:
             term2 = find_original_type(term2, cast);
             break;
         case INT_T:
-            if(!strcmp(term2.string,"calculated")){
+            if(term2.state == Calculated){
                 debug("calculated, don't need to reload Rvalue.");
-                if(!strcmp(term1.string,"calculated")){
+                if(term1.state == Calculated){
                     if(term1.type == FLOAT_T){
                         gencode("\ti2f\n");
                     }   
@@ -1036,8 +1006,8 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
             }
             break;
         case FLOAT_T:
-            if(!strcmp(term2.string,"calculated")){
-                if(!strcmp(term1.string,"calculated")){
+            if(term2.state == Calculated){
+                if(term1.state == Calculated){
                     if(term1.type == INT_T){
                         gencode("\tswap\n");
                         gencode("\ti2f\n");
@@ -1088,7 +1058,7 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
             debug("NOT + - OP!!!");
             break;
     }
-    result.string = "calculated";
+    result.state = Calculated;
     return result;
 }
 
@@ -1096,7 +1066,7 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
     debug("do_comparison");
     Value result;
     int cast = 0;
-    if(!strcmp(term1.string,"calculated")){
+    if(term1.state == Calculated){
         debug("calculated, don't need to load Lvalue.");
         if(term1.type == FLOAT_T){
             cast = 1;
@@ -1126,9 +1096,9 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
             term2 = find_original_type(term2, cast);
             break;
         case INT_T:
-            if(!strcmp(term2.string,"calculated")){
+            if(term2.state == Calculated){
                 debug("calculated, don't need to reload Rvalue.");
-                if(!strcmp(term1.string,"calculated")){
+                if(term1.state == Calculated){
                     if(term1.type == FLOAT_T){
                         gencode("\ti2f\n");
                     }   
@@ -1153,8 +1123,8 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
             }
             break;
         case FLOAT_T:
-            if(!strcmp(term2.string,"calculated")){
-                if(!strcmp(term1.string,"calculated")){
+            if(term2.state == Calculated){
+                if(term1.state == Calculated){
                     if(term1.type == INT_T){
                         gencode("\tswap\n");
                         gencode("\ti2f\n");
@@ -1225,14 +1195,24 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
 }
 
 Value find_original_type(Value term, int cast){
-    debug("find_original_type");
+    //debug("find_original_type");
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
             while(cur_entry != NULL){
                 if(!strcmp(cur_entry->name,term.string))
                 {
-                    if(!strcmp(cur_entry->type,"int")){
+                    if(!strcmp(cur_entry->kind,"function")){
+
+                        if(term.type == INT){
+                            if(cast){
+                                sprintf(code_buf,"\ti2f\n");
+                                gencode(code_buf);
+                            }
+                        }
+                        return term;
+                    }
+                    else if(!strcmp(cur_entry->type,"int")){
                         term.type = INT_T;
                         if(ptr->depth == 0){
                             sprintf(code_buf,"\tgetstatic compiler_hw3/%s %s\n",term.string,convert_type(INT_T));
@@ -1413,9 +1393,24 @@ void find_return_type(Value term){
         debug("not found ID_T original type");
 }
 void do_load_attribute(Value term1){
-    debug("do_load_attribute");
+    //debug("do_load_attribute");
     printf("type:%d,addtribute name:%s\n",term1.type,term1.string);
-    find_original_type(term1,0);
+    switch (term1.type){
+            case ID_T:
+                term1 = find_original_type(term1,0);
+                break;
+            case INT_T:
+                sprintf(code_buf,"\tldc %d\n",term1.i_val);
+                gencode(code_buf);
+                break;
+            case FLOAT_T:
+                sprintf(code_buf,"\tldc %f\n",term1.f_val);
+                gencode(code_buf);
+                break;
+            default:
+                debug("error type of addition");
+                break;
+        }
 }
 
 
@@ -1428,6 +1423,15 @@ Value do_function_call(Value id){
         if(!strcmp(cur->name,id.string)){
             strcpy(name,cur->name);
             strcpy(type,cur->type);
+            if(!strcmp(type,"int")){
+                id.type = INT_T;
+            }
+            else if(!strcmp(type,"float")){
+                id.type = FLOAT_T;
+            }
+            else{
+                debug("function type is not int or float, don't need to convert Value id.type");
+            }
             strcpy(argument,cur->attribute);
             break;
         }
@@ -1445,5 +1449,6 @@ Value do_function_call(Value id){
     type = str_replace(type,"string","Ljava/lang/String;");
     sprintf(code_buf,"\tinvokestatic compiler_hw3/%s(%s)%s\n",name,argument,type);
     gencode(code_buf);
+    id.state = Calculated;
     return id;
 }

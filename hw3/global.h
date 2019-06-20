@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+typedef enum { NotCalculated ,Calculated } State;
 typedef enum { VOID_T, INT_T, FLOAT_T, STRING_T, BOOL_T, ID_T, NAT} Type;
 typedef enum {
     ADD_OP, SUB_OP, MUL_OP, DIV_OP, MOD_OP, INC_OP, DEC_OP,
@@ -19,5 +20,6 @@ struct Value {
     int i_val;
     float f_val;
     char* string;
+    State state;
 };
 #endif
