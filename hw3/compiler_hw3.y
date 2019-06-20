@@ -10,6 +10,7 @@ extern char buf[BUF_SIZE]; // Get current code line from lex
 char code_buf[100];
 FILE *file; // To generate .j file for Jasmin
 int table_not_create =0;
+int zero = 0;
 void yyerror(char *s);
 
 /* Symbol Table Structure, Variable Definition */
@@ -35,6 +36,7 @@ Header *header_root = NULL; // connect these headers
 Header *cur_header = NULL; // current header
 int depth = 0;
 int while_count = 0;
+int delete_file = 0;
 Value NaV;
 
 extern int syntax_error;
@@ -181,6 +183,7 @@ assign_stat
     : ID assign_op expression SEMICOLON {
         undeclared_check($1.string, "variable"); 
         do_assign_expr($1, $2, $3);
+        zero = 0;
     }
     ;
 assign_op
@@ -204,7 +207,9 @@ addition_expr
     ;
 multiplication_expr
     : postfix_expr {$$ = $1;}
-    | multiplication_expr mul_op postfix_expr { $$ = do_multiplication_expr($1, $2, $3); }
+    | multiplication_expr mul_op postfix_expr { 
+        
+        $$ = do_multiplication_expr($1, $2, $3); }
     ;
 postfix_expr
     : parenthesis_clause { $$ = $1; }
@@ -278,8 +283,16 @@ print_func
     | PRINT '(' '"' STRING '"' ')' SEMICOLON { do_print($4); }
     ;
 constant
-    : I_CONST {$$ = $1;}
-    | F_CONST {$$ = $1;}
+    : I_CONST {$$ = $1;
+        if($1.i_val == 0){
+            zero = 1;
+        } 
+    }
+    | F_CONST {$$ = $1;
+        if($1.f_val == 0.0){
+            zero = 1;
+        }
+    } 
     | '"' STR_CONST '"' { $$ = $2; }
     | TRUE { $$ = $1; }
     | FALSE { $$ = $1;  }
@@ -325,7 +338,9 @@ int main(int argc, char** argv)
         printf("\nTotal lines: %d \n",yylineno);
     }
     fclose(file);
-
+    if(delete_file){
+        remove("compiler_hw3.j");
+    }
     return 0;
 }
 
@@ -334,6 +349,7 @@ void yyerror(char *s)
     if(!strcmp(s,"syntax error")){
         printf("%d: %s\n", yylineno, buf);
         syntax_error = 1;
+        delete_file = 1;
         if(semantic_error){
             for (int i = 0; i< NumberOfError;i++){
                 printf("\n|-----------------------------------------------|\n");
@@ -491,10 +507,12 @@ void undeclared_check(char* name, char* kind){
                 error_msg[NumberOfError] = malloc(200);
                 sprintf(error_msg[NumberOfError++],"Undeclared function %s", name);
                 semantic_error = 1;
+                delete_file = 1;
             } else if(!strcmp(kind, "variable")){
                 error_msg[NumberOfError] = malloc(200);
                 sprintf(error_msg[NumberOfError++],"Undeclared variable %s", name);
                 semantic_error = 1;
+                delete_file = 1;
             }
         }
 }
@@ -503,9 +521,11 @@ void redeclared_check(char* name, char* kind){
     if(!strcmp(kind, "function")){
         sprintf(error_msg[NumberOfError++],"Redeclared function %s", name);
         semantic_error = 1;
+        delete_file = 1;
     } else if(!strcmp(kind, "variable")){
         sprintf(error_msg[NumberOfError++],"Redeclared variable %s", name);
         semantic_error = 1;
+        delete_file = 1;
     }
 }
 
@@ -515,14 +535,14 @@ void gencode(char *s) {
 }
 
 void do_declaration_stat(int index, Value type, Value id, Value R_val){
-    debug("do_declaration");
+    //debug("do_declaration");
     int global = 0;
     if(cur_header->depth == 0){
         global = 1;
     }
     char* asm_type = convert_type(type.type);
     if(index == -1){
-        debug("not found declaration");
+        //debug("not found declaration");
     }
     if(global){
         switch (type.type){
@@ -543,7 +563,7 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
                 gencode(code_buf); 
                 break;
             default:
-                printf("%d\n",type.type);
+                //printf("%d\n",type.type);
                 debug("variable type is not int,float,string,bool. line 455");
                 break;
         }
@@ -573,7 +593,7 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
                 gencode(code_buf); 
                 break;
             default:
-                printf("%s,%d\n",id.string,type.type);
+                //printf("%s,%d\n",id.string,type.type);
                 debug("variable type is not int,float,string,bool. line 475");
         }
     }
@@ -605,7 +625,7 @@ void do_declaration_stat(int index, Value type, Value id, Value R_val){
                 gencode(code_buf); 
                 break;
             default:
-                printf("%s,%d\n",id.string,type.type);
+                //printf("%s,%d\n",id.string,type.type);
                 debug("variable type is not int,float,string,bool. line 475");
         }
     }
@@ -693,7 +713,7 @@ char* str_replace(char* string, const char* substr, const char* replacement) {
 	return newstr;
 }
 void do_assign_expr(Value term1, Operator op, Value term2){
-    debug("do_assign_expr.");
+    //debug("do_assign_expr.");
     switch (op){
         case ASGN_OP:
             find_assign_type(term1,term2); //Lval must be a variable
@@ -723,7 +743,7 @@ void do_assign_expr(Value term1, Operator op, Value term2){
     }
 }
 void do_return_stat(Value term1){
-    printf("return type %d.\n",term1.type);
+    //printf("return type %d.\n",term1.type);
     if(term1.type == VOID_T || term1.type == NAT){
         gencode("\treturn\n.end method\n");
     }
@@ -757,7 +777,6 @@ void do_return_stat(Value term1){
     }
 }
 void do_print(Value term1){
-    debug("do_print");
     switch(term1.type){
         case ID_T:
             term1 = find_original_type(term1,0);
@@ -780,10 +799,7 @@ void do_print(Value term1){
     gencode(code_buf);
 }
 Value do_postfix_expr(Value term1, Operator op){
-    debug("do_postfix_expr");  
     Value temp = find_original_type(term1,0);
-    printf("term1.type == %d\n",term1.type);
-    printf("temp.type == %d\n",temp.type);
     if(temp.type == INT_T){
         switch(op){
             case INC_OP:
@@ -824,24 +840,23 @@ Value do_postfix_expr(Value term1, Operator op){
     }
     else{
         debug("term1 type is not int or float ,in postfix");
-        printf("type::%d\n",term1.type);
+        //printf("type::%d\n",term1.type);
     }
     term1.state = Calculated;
     return term1;
 }
 Value do_multiplication_expr(Value term1, Operator op, Value term2){
-    debug("do_multiplication");
+    //debug("do_multiplication");
     Value result;
-    int cast = 0;
     do_loading(term1,term2);
-    printf("term1:%d term2:%d \n",term1.type,term2.type);
+    //printf("term1:%d term2:%d \n",term1.type,term2.type);
     if(term1.type == FLOAT_T || term2.type == FLOAT_T){
         result.type = FLOAT_T;
     }
     else {
         result.type = INT_T;
     }
-    printf("result type: %d\n",result.type);
+    //printf("result type: %d\n",result.type);
     switch (op){
         case MUL_OP:
             if(result.type == INT_T){
@@ -854,6 +869,12 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             }
             break;
         case DIV_OP:
+            if(zero){
+                error_msg[NumberOfError] = malloc(200);
+                sprintf(error_msg[NumberOfError++],"Cannot divide by 0");
+                semantic_error = 1;
+                delete_file = 1;
+            }
             if(result.type == INT_T){
                 sprintf(code_buf,"\tidiv\n");
                 gencode(code_buf);
@@ -864,12 +885,15 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
             }
             break;
         case MOD_OP:
-            if(result.type == INT_T){
+            if(term1.type == INT_T && term2.type == INT_T){
                 sprintf(code_buf,"\tirem\n");
                 gencode(code_buf);
             }
             else {
-                debug("float cannot be modulized!!");
+                error_msg[NumberOfError] = malloc(200);
+                sprintf(error_msg[NumberOfError++],"Cannot module with float.");
+                semantic_error = 1;
+                delete_file = 1;       
             }
             break;
         default:
@@ -880,18 +904,18 @@ Value do_multiplication_expr(Value term1, Operator op, Value term2){
     return result;
 }
 Value do_addition_expr(Value term1, Operator op, Value term2){
-    debug("do_addition");
+    //debug("do_addition");
     Value result;
     int cast = 0;
     do_loading(term1,term2);
-    printf("term1:%d term2:%d \n",term1.type,term2.type);
+    //printf("term1:%d term2:%d \n",term1.type,term2.type);
     if(term1.type == FLOAT_T || term2.type == FLOAT_T){
         result.type = FLOAT_T;
     }
     else {
         result.type = INT_T;
     }
-    printf("result type: %d\n",result.type);
+    //printf("result type: %d\n",result.type);
     switch (op){
         case ADD_OP:
             if(result.type == INT_T){
@@ -921,10 +945,10 @@ Value do_addition_expr(Value term1, Operator op, Value term2){
 }
 
 Value do_comparison_expr(Value term1, Operator op, Value term2){
-    debug("do_comparison");
+    //debug("do_comparison");
     Value result;
     if(term1.state == Calculated){ //term1 calculated
-        debug("calculated, don't need to load Lvalue.");
+        //debug("calculated, don't need to load Lvalue.");
     }
     else{ //term1 not calculated
         switch (term1.type){
@@ -948,7 +972,7 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
         }
     }
     if(term2.state == Calculated){
-        debug("calculated, don't need to reload Rvalue.");
+        //debug("calculated, don't need to reload Rvalue.");
     }
     else{
         switch (term2.type){
@@ -978,7 +1002,7 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
     else{
         debug("type conflict in comparison");
     }
-    printf("term1:%d term2:%d \n",term1.type,term2.type);
+    //printf("term1:%d term2:%d \n",term1.type,term2.type);
     result.type = INT_T;
     // printf("result type: %d\n",result.type);
     switch (op){
@@ -1008,7 +1032,7 @@ Value do_comparison_expr(Value term1, Operator op, Value term2){
 }
 
 Value find_original_type(Value term, int cast){
-    debug("find_original_type");
+    //debug("find_original_type");
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
@@ -1080,15 +1104,15 @@ Value find_original_type(Value term, int cast){
         debug("not found ID_T original type");
 }
 Value find_assign_type(Value term1, Value term2){
-    debug("find_assign_type");
-    printf("term1%s: %d term2: %d\n",term1.string,term1.type,term2.type);
+    //("find_assign_type");
+    //printf("term1%s: %d term2: %d\n",term1.string,term1.type,term2.type);
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
             while(cur_entry != NULL){
                 if(!strcmp(cur_entry->name,term1.string)){
                     if(!strcmp(cur_entry->type,"int")){
-                        debug("i found term1 type is int");
+                        //debug("i found term1 type is int");
                         if(ptr->depth == 0){
                             if(term2.type == FLOAT_T){
                                 sprintf(code_buf,"\tf2i\n");
@@ -1142,7 +1166,7 @@ Value find_assign_type(Value term1, Value term2){
 }
 
 void find_return_type(Value term){
-    debug("find_return_type");
+    //("find_return_type");
     Header *ptr = cur_header;
         while(ptr != NULL){
             Entry* cur_entry = ptr->table_root->next;
@@ -1218,7 +1242,7 @@ void find_return_type(Value term){
 }
 void do_load_attribute(Value term1){
     //debug("do_load_attribute");
-    printf("type:%d,addtribute name:%s\n",term1.type,term1.string);
+    //printf("type:%d,addtribute name:%s\n",term1.type,term1.string);
     switch (term1.type){
             case ID_T:
                 term1 = find_original_type(term1,0);
@@ -1281,7 +1305,7 @@ void do_loading(Value term1, Value term2){
     Value result;
     int cast = 0;
     if(term1.state == Calculated){
-        debug("calculated, don't need to load Lvalue.");
+        //debug("calculated, don't need to load Lvalue.");
         if(term1.type == FLOAT_T){
             cast = 1;
         }
@@ -1315,13 +1339,13 @@ void do_loading(Value term1, Value term2){
             break;
         case INT_T:
             if(term2.state == Calculated){
-                debug("calculated, don't need to reload Rvalue.");
+                //debug("calculated, don't need to reload Rvalue.");
                 if(term1.state == Calculated){
                     if(term1.type == FLOAT_T){
                         gencode("\ti2f\n");
                     }   
                     else{
-                        debug("both are calculated.");
+                        //debug("both are calculated.");
                     }  
                 }
                 else{
@@ -1349,7 +1373,7 @@ void do_loading(Value term1, Value term2){
                     }
                 }
                 else{
-                    debug("impossible");        
+                    //debug("impossible");        
                 }
             }
             else{
