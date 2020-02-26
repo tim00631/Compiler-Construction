@@ -1,5 +1,7 @@
 # 107_2 Compiler Construction
+
 ### This repository is for 2019 Compiler Course in NCKU CSIE
+### a compiler that can compile micro-C language to JVM instructions
 
 ## HW1-Lex-Scanner
 * A scanner for the μC language
